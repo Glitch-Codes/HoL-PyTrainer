@@ -1,113 +1,114 @@
+import struct
 import utility
 
 class GodMode:
-    def __init__(self, process, proc_handle, base_address):
+    def __init__(self, process, executible, proc_handle, god_mode_addr):
         self.process = process
+        self.executible = executible
         self.proc_handle = proc_handle
-        self.base_address = base_address
+        self.god_mode_addr = god_mode_addr
         self.enabled = False
-        
-        self.god_mode_addr = None
-        self.newmem = None
+        self.code_cave = None
         self.original_bytes = None
-        self.player_addr = None
-        self.one_hit_kill = False
         
     def enable(self):
-        """Enable god mode by injecting code cave"""
+        """Enable god mode by replacing the health decrement instructions"""
         if self.enabled:
             return True
-            
-        # AOB scan for the health instruction
-        # Pattern: F3 0F 11 52 14 (movss [rdx+14],xmm2)
-        pattern = "F3 0F 11 52 14"
-        self.god_mode_addr = utility.aobScan(self.process, pattern, "re7.exe")
         
         if not self.god_mode_addr:
             return False
         
-        print(f"Found GodMode at: {hex(self.god_mode_addr)}")
-        
-        # Save original bytes
+        # Save original bytes (5 bytes: F3 0F 11 41 0C)
         self.original_bytes = self.process.read_bytes(self.god_mode_addr, 5)
+        print(f"Original bytes: {self.original_bytes.hex()}")
         
-        # Allocate memory for code cave
-        self.newmem = utility.allocMemory(self.proc_handle, 0x1000)
-        if not self.newmem:
+        self.code_cave = utility.allocCodeCave(self.proc_handle, self.god_mode_addr)
+        if not self.code_cave:
             return False
-        
-        print(f"Allocated code cave at: {hex(self.newmem)}")
-        
-        # Build the assembly code for the code cave
-        return_addr = self.god_mode_addr + 5
-        
-        # Calculate RIP-relative offsets for data storage
-        # Data will be stored at the end of the code cave
-        data_offset = 0x100
-        
-        asm_code = f"""
-            push rax
-            
-            // Check if this is the player (compare against a known player signature)
-            cmp qword ptr [rsi+0x50], 0x01
-            je player_health
-            
-            // Check if one hit kill is enabled
-            lea rax, [rip+{data_offset-20}]
-            cmp byte ptr [rax], 0
-            pop rax
-            je original_code
-            
-            // One hit kill logic - set enemy health to very low value
-            push rax
-            lea rax, [rip+{data_offset-32}]
-            movss xmm2, dword ptr [rax]
-            pop rax
-            jmp original_code
-            
-        player_health:
-            pop rax
-            movss xmm2, dword ptr [rdx+0x10]
-            
-        original_code:
-            movss dword ptr [rdx+0x14], xmm2
-            jmp qword ptr [rip+{data_offset-48}]
-        """
+        print(f"Using code cave at: {hex(self.code_cave)}")
         
         # Assemble the code cave
         try:
-            code_bytes = utility.asmToBytes(asm_code.replace("\n", "; "), self.newmem)
+            # Build code cave:
+            # Structure: [health float (4 bytes)][check and load (varies)][original instruction (5 bytes)][jump back (5 bytes)]
             
-            # Write code cave to allocated memory
-            utility.patchBytes(self.proc_handle, ''.join(f'{b:02x}' for b in code_bytes), 
-                             self.newmem, len(code_bytes))
+            print(f"Building code cave with god mode")
             
-            # Write data section
-            # Offset +0x100: one hit kill flag (1 byte)
-            self.process.write_uchar(self.newmem + 0x100, 0)
+            # Health value at the beginning of code cave
+            health_value = 120.0
+            health_bytes = struct.pack('<f', health_value)
             
-            # Offset +0x104: low health value for enemies (float: 1.0 = 0x3F800000)
-            self.process.write_float(self.newmem + 0x104, 1.0)
+            # Build the conditional check and load instructions:
+            # cmp [rbx+14],#505 (48 81 7B 14 05 05 00 00) - 8 bytes
+            # jne code (75 0A) - 2 bytes  
+            # movss xmm0,[rip+offset] (F3 0F 10 05 [4-byte offset]) - 8 bytes
+            # Total: 18 bytes before original instruction
             
-            # Offset +0x108: return address (8 bytes)
-            self.process.write_longlong(self.newmem + 0x108, return_addr)
+            # Instruction addresses:
+            # cave+0: health float
+            # cave+4: cmp [rbx+14],#505
+            # cave+12: jne code (jump to original instruction if not player)
+            # cave+14: movss xmm0,[rip+offset] (load health if player)
             
-            # Create jump from original location to code cave
-            jmp_offset = self.newmem - (self.god_mode_addr + 5)
-            jmp_bytes = [0xE9] + list(jmp_offset.to_bytes(4, 'little', signed=True))
+            # cmp [rbx+14],#505
+            cmp_instruction = bytes([0x48, 0x81, 0x7B, 0x14, 0x05, 0x05, 0x00, 0x00])
             
-            # Write the hook
-            utility.patchBytes(self.proc_handle, ''.join(f'{b:02x}' for b in jmp_bytes),
-                             self.god_mode_addr, 5)
+            # jne code - jump 10 bytes forward (skip the movss load instruction)
+            jne_instruction = bytes([0x75, 0x0A])
             
+            # movss xmm0,[rip+offset] - load health value
+            # Instruction at cave+14, RIP after = cave+22
+            # Target is cave+0, so offset = cave+0 - cave+22 = -22
+            load_instruction_addr = self.code_cave + 14
+            rip_after_load = load_instruction_addr + 8
+            rip_offset = self.code_cave - rip_after_load
+            
+            print(f"  Health value at: {hex(self.code_cave)}")
+            print(f"  Load instruction at: {hex(load_instruction_addr)}")
+            print(f"  RIP offset to health: {rip_offset}")
+            
+            rip_offset_bytes = rip_offset.to_bytes(4, 'little', signed=True)
+            load_instruction = bytes([0xF3, 0x0F, 0x10, 0x05]) + rip_offset_bytes
+            
+            # Original instruction: movss [rcx+0C],xmm0
+            original_instruction = self.original_bytes
+            
+            # Calculate jump back to address after original hook
+            return_addr = self.god_mode_addr + 5
+            cave_end = self.code_cave + 4 + 8 + 2 + 8 + 5 + 5  # health + cmp + jne + load + original + jump
+            jmp_back_offset = return_addr - cave_end
+            jmp_back_bytes = bytes([0xE9]) + jmp_back_offset.to_bytes(4, 'little', signed=True)
+            
+            # Assemble cave code: health + cmp + jne + load + original + jump back
+            cave_code = health_bytes + cmp_instruction + jne_instruction + load_instruction + original_instruction + jmp_back_bytes
+            
+            print(f"Writing {len(cave_code)} bytes to code cave:")
+            print(f"  Health float (0-3): {health_bytes.hex()}")
+            print(f"  CMP instruction (4-11): {cmp_instruction.hex()}")
+            print(f"  JNE instruction (12-13): {jne_instruction.hex()}")
+            print(f"  Load xmm0 (14-21): {load_instruction.hex()}")
+            print(f"  Original instruction (22-26): {original_instruction.hex()}")
+            print(f"  Jump back (27-31): {jmp_back_bytes.hex()}")
+            
+            utility.patchBytes(self.proc_handle, ''.join(f'{b:02x}' for b in cave_code), self.code_cave, len(cave_code))
+            
+            # Create 5-byte jump from original location to code cave (jump to cave+4, skip the health float)
+            jmp_to_offset = (self.code_cave + 4) - (self.god_mode_addr + 5)
+            jmp_bytes = bytes([0xE9]) + jmp_to_offset.to_bytes(4, 'little', signed=True)
+            
+            print(f"Writing hook at {hex(self.god_mode_addr)}: {jmp_bytes.hex()}")
+            print(f"  Jump to offset: {jmp_to_offset}")
+            utility.patchBytes(self.proc_handle, ''.join(f'{b:02x}' for b in jmp_bytes), self.god_mode_addr, 5)
+
             self.enabled = True
             print("God mode enabled!")
             return True
             
         except Exception as e:
             print(f"Failed to enable god mode: {e}")
-            if self.newmem:
-                utility.freeMemory(self.proc_handle, self.newmem)
+            if self.code_cave:
+                utility.freeMemory(self.proc_handle, self.code_cave)
             return False
     
     def disable(self):
@@ -120,21 +121,9 @@ class GodMode:
             utility.patchBytes(self.proc_handle, ''.join(f'{b:02x}' for b in self.original_bytes), self.god_mode_addr, len(self.original_bytes))
         
         # Free allocated memory
-        if self.newmem:
-            utility.freeMemory(self.proc_handle, self.newmem)
-            self.newmem = None
+        if self.code_cave:
+            utility.freeMemory(self.proc_handle, self.code_cave)
+            self.code_cave = None
         
         self.enabled = False
         print("God mode disabled!")
-    
-    def set_one_hit_kill(self, enabled):
-        """Enable/disable one hit kill for enemies"""
-        if not self.enabled or not self.newmem:
-            return False
-        
-        self.one_hit_kill = enabled
-        value = 1 if enabled else 0
-        
-        # Write the one hit kill flag to offset +0x100 in code cave
-        self.process.write_uchar(self.newmem + 0x100, value)
-        return True

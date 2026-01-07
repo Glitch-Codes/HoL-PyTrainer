@@ -3,6 +3,7 @@ import pymem
 import utility
 from AOBCheats.unlimited_fuel import UnlimitedFuel
 from AOBCheats.no_reload import NoReload
+from AOBCheats.god_mode import GodMode
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QCheckBox, QLabel, QGroupBox, QPushButton, QTextEdit)
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
@@ -26,6 +27,7 @@ class TrainerThread(QThread):
         self.running = True
         self.no_reload_enabled = False
         self.unlimited_fuel_enabled = False
+        self.god_mode_enabled = False
         
         self.process = None
         self.proc_handle = None
@@ -35,6 +37,8 @@ class TrainerThread(QThread):
         self.no_reload = None
         self.unlimited_fuel_addr = None
         self.unlimited_fuel = None
+        self.god_mode_addr = None
+        self.god_mode = None
         
     def run(self):
         try:
@@ -73,6 +77,16 @@ class TrainerThread(QThread):
                 self.cheat_available.emit("unlimited_fuel", True)
             self.unlimited_fuel = UnlimitedFuel(self.process, executible, self.proc_handle, self.unlimited_fuel_addr)
 
+            # Initialize god mode
+            self.log_output.emit(f"Scanning for God Mode address...")
+            self.god_mode_addr = utility.aobScan(self.process, "F3 0F 11 41 0C C3 CC CC CC CC CC CC CC 48", executible)
+            if self.god_mode_addr == None:
+                self.log_output.emit("Failed to find God Mode address")
+                self.cheat_available.emit("god_mode", False)
+            else:
+                self.log_output.emit("Found God Mode address: " + hex(self.god_mode_addr))
+                self.cheat_available.emit("god_mode", True)
+            self.god_mode = GodMode(self.process, executible, self.proc_handle, self.god_mode_addr)
             self.log_output.emit("Finished searching for addresses!")
             self.success_signal.emit("Trainer active! Have fun :)")
             
@@ -100,6 +114,17 @@ class TrainerThread(QThread):
                     elif not self.unlimited_fuel_enabled and self.unlimited_fuel and self.unlimited_fuel.enabled:
                         self.unlimited_fuel.disable()
                         self.status_update.emit("Unlimited Fuel Deactivated")
+
+                    # Handle god mode
+                    if self.god_mode_enabled and self.god_mode and not self.god_mode.enabled:
+                        if self.god_mode.enable():
+                            self.success_signal.emit("God Mode Activated!")
+                        else:
+                            self.error_signal.emit("Failed to enable God Mode")
+                            self.god_mode_enabled = False
+                    elif not self.god_mode_enabled and self.god_mode and self.god_mode.enabled:
+                        self.god_mode.disable()
+                        self.status_update.emit("God Mode Deactivated")
                     
                     time.sleep(0.1)  # Reduced CPU usage
                     
@@ -119,6 +144,9 @@ class TrainerThread(QThread):
         # Disable unlimited fuel if enabled
         if self.unlimited_fuel and self.unlimited_fuel.enabled:
             self.unlimited_fuel.disable()
+        # Disable god mode if enabled
+        if self.god_mode and self.god_mode.enabled:
+            self.god_mode.disable()
         self.wait()
 
 
@@ -195,6 +223,20 @@ class TrainerGUI(QMainWindow):
         """)
         self.unlimited_fuel_checkbox.stateChanged.connect(self.toggle_unlimited_fuel)
         cheats_layout.addWidget(self.unlimited_fuel_checkbox)
+
+        # God Mode checkbox
+        self.god_mode_checkbox = QCheckBox("God Mode (Opcode Patch)")
+        self.god_mode_checkbox.setStyleSheet("""
+            QCheckBox {
+                padding: 5px;
+                font-size: 12px;
+            }
+            QCheckBox:disabled {
+                color: #666666;
+            }
+        """)
+        self.god_mode_checkbox.stateChanged.connect(self.toggle_god_mode)
+        cheats_layout.addWidget(self.god_mode_checkbox)
         
         cheats_group.setLayout(cheats_layout)
         layout.addWidget(cheats_group)
@@ -304,6 +346,7 @@ class TrainerGUI(QMainWindow):
         # Reset checkboxes
         self.no_reload_checkbox.setChecked(False)
         self.unlimited_fuel_checkbox.setChecked(False)
+        self.god_mode_checkbox.setChecked(False)
         
         # Clear console
         self.console_text.clear()
@@ -315,10 +358,15 @@ class TrainerGUI(QMainWindow):
     def toggle_unlimited_fuel(self, state):
         if self.trainer_thread:
             self.trainer_thread.unlimited_fuel_enabled = (state == Qt.Checked)
+
+    def toggle_god_mode(self, state):
+        if self.trainer_thread:
+            self.trainer_thread.god_mode_enabled = (state == Qt.Checked)
     
     def set_checkboxes_enabled(self, enabled):
         self.no_reload_checkbox.setEnabled(enabled)
         self.unlimited_fuel_checkbox.setEnabled(enabled)
+        self.god_mode_checkbox.setEnabled(enabled)
     
     def set_cheat_available(self, cheat_name, is_available):
         """Enable or disable specific cheat checkbox based on address availability"""
@@ -326,6 +374,8 @@ class TrainerGUI(QMainWindow):
             self.no_reload_checkbox.setEnabled(is_available)
         elif cheat_name == "unlimited_fuel":
             self.unlimited_fuel_checkbox.setEnabled(is_available)
+        elif cheat_name == "god_mode":
+            self.god_mode_checkbox.setEnabled(is_available)
     
     def update_status(self, message):
         self.status_label.setText(f"Status: {message}")

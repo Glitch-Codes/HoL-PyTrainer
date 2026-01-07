@@ -9,7 +9,6 @@ class UnlimitedFuel:
         self.unlimited_fuel_addr = unlimited_fuel_addr
         self.enabled = False
         self.code_cave = None
-        self.fuel_addr = None
         self.original_bytes = None
         
     def enable(self):
