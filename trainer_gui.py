@@ -18,6 +18,7 @@ class TrainerThread(QThread):
     error_signal = pyqtSignal(str)
     success_signal = pyqtSignal(str)
     log_output = pyqtSignal(str)
+    cheat_available = pyqtSignal(str, bool)  # cheat_name, is_available
     
     def __init__(self):
         super().__init__()
@@ -55,8 +56,10 @@ class TrainerThread(QThread):
             self.no_reload_addr = utility.aobScan(self.process, "89 87 E0 00 00 00 48 85 F6", executible)
             if self.no_reload_addr == None:
                 self.log_output.emit("Failed to find No Reload address")
+                self.cheat_available.emit("no_reload", False)
             else:
                 self.log_output.emit("Found No Reload address: " + hex(self.no_reload_addr))
+                self.cheat_available.emit("no_reload", True)
             self.no_reload = NoReload(self.process, executible, self.proc_handle, self.no_reload_addr)
 
             # Initialize unlimited fuel
@@ -64,8 +67,10 @@ class TrainerThread(QThread):
             self.unlimited_fuel_addr = utility.aobScan(self.process, "F3 0F 11 81 D8 10 00 00", executible)
             if self.unlimited_fuel_addr == None:
                 self.log_output.emit("Failed to find Unlimited Fuel address")
+                self.cheat_available.emit("unlimited_fuel", False)
             else:
                 self.log_output.emit("Found Unlimited Fuel address: " + hex(self.unlimited_fuel_addr))
+                self.cheat_available.emit("unlimited_fuel", True)
             self.unlimited_fuel = UnlimitedFuel(self.process, executible, self.proc_handle, self.unlimited_fuel_addr)
 
             self.log_output.emit("Finished searching for addresses!")
@@ -165,13 +170,29 @@ class TrainerGUI(QMainWindow):
         
         # No Reload checkbox
         self.no_reload_checkbox = QCheckBox("No Reload (Opcode Patch)")
-        self.no_reload_checkbox.setStyleSheet("padding: 5px; font-size: 12px;")
+        self.no_reload_checkbox.setStyleSheet("""
+            QCheckBox {
+                padding: 5px;
+                font-size: 12px;
+            }
+            QCheckBox:disabled {
+                color: #666666;
+            }
+        """)
         self.no_reload_checkbox.stateChanged.connect(self.toggle_no_reload)
         cheats_layout.addWidget(self.no_reload_checkbox)
 
         # Unlimited Fuel checkbox
         self.unlimited_fuel_checkbox = QCheckBox("Unlimited Fuel (Opcode Patch)")
-        self.unlimited_fuel_checkbox.setStyleSheet("padding: 5px; font-size: 12px;")
+        self.unlimited_fuel_checkbox.setStyleSheet("""
+            QCheckBox {
+                padding: 5px;
+                font-size: 12px;
+            }
+            QCheckBox:disabled {
+                color: #666666;
+            }
+        """)
         self.unlimited_fuel_checkbox.stateChanged.connect(self.toggle_unlimited_fuel)
         cheats_layout.addWidget(self.unlimited_fuel_checkbox)
         
@@ -262,11 +283,11 @@ class TrainerGUI(QMainWindow):
         self.trainer_thread.error_signal.connect(self.show_error)
         self.trainer_thread.success_signal.connect(self.show_success)
         self.trainer_thread.log_output.connect(self.append_console)
+        self.trainer_thread.cheat_available.connect(self.set_cheat_available)
         self.trainer_thread.start()
         
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
-        self.set_checkboxes_enabled(True)
     
     def stop_trainer(self):
         if self.trainer_thread:
@@ -298,6 +319,13 @@ class TrainerGUI(QMainWindow):
     def set_checkboxes_enabled(self, enabled):
         self.no_reload_checkbox.setEnabled(enabled)
         self.unlimited_fuel_checkbox.setEnabled(enabled)
+    
+    def set_cheat_available(self, cheat_name, is_available):
+        """Enable or disable specific cheat checkbox based on address availability"""
+        if cheat_name == "no_reload":
+            self.no_reload_checkbox.setEnabled(is_available)
+        elif cheat_name == "unlimited_fuel":
+            self.unlimited_fuel_checkbox.setEnabled(is_available)
     
     def update_status(self, message):
         self.status_label.setText(f"Status: {message}")
