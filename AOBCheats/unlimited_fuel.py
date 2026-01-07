@@ -7,8 +7,6 @@ class UnlimitedFuel:
         self.proc_handle = proc_handle
         self.unlimited_fuel_addr = unlimited_fuel_addr
         self.enabled = False
-        
-        self.fuel_addr = None
         self.code_cave = None
         self.original_bytes = None
         
@@ -25,10 +23,8 @@ class UnlimitedFuel:
         # Get address by pointer
         #self.fuel_addr = self.base_address + 0x18F4416
         
-        if not self.fuel_addr:
+        if not self.unlimited_fuel_addr:
             return False
-        
-        print(f"Found OpCode bytes to modify for Unlimited Fuel at: {hex(self.unlimited_fuel_addr)}")
         
         # Save original bytes (8 bytes)
         self.original_bytes = self.process.read_bytes(self.unlimited_fuel_addr, 8)

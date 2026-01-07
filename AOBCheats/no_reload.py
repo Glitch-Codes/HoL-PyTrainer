@@ -7,8 +7,6 @@ class NoReload:
         self.proc_handle = proc_handle
         self.no_reload_addr = no_reload_addr
         self.enabled = False
-        
-        self.no_reload_addr = None
         self.original_bytes = None
         
     def enable(self):
@@ -26,8 +24,6 @@ class NoReload:
         
         if not self.no_reload_addr:
             return False
-        
-        print(f"Found OpCode bytes to modify for No Reload at: {hex(self.no_reload_addr)}")
         
         # Save original bytes (6 bytes)
         self.original_bytes = self.process.read_bytes(self.no_reload_addr, 6)

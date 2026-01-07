@@ -17,7 +17,7 @@ class TrainerThread(QThread):
     status_update = pyqtSignal(str)
     error_signal = pyqtSignal(str)
     success_signal = pyqtSignal(str)
-    console_output = pyqtSignal(str)
+    log_output = pyqtSignal(str)
     
     def __init__(self):
         super().__init__()
@@ -43,29 +43,33 @@ class TrainerThread(QThread):
             self.proc_handle = self.process.process_handle
             self.base_address = self.process.base_address
             
-            self.status_update.emit(f"Found {abreviation} process- Base: {hex(self.base_address)}")
+            self.status_update.emit("Loading trainer...")
+            self.log_output.emit(f"Found {abreviation} process - Base: {hex(self.base_address)}")
             
             if gameModule != self.base_address:
                 self.error_signal.emit("Discrepancy between Game Module and Base Address")
                 return
 
             # Initialize no reload
-            self.console_output.emit(f"Scanning for No Reload address...")
-            self.status_update.emit("Scanning for No Reload address...")
+            self.log_output.emit(f"Scanning for No Reload address...")
             self.no_reload_addr = utility.aobScan(self.process, "89 87 E0 00 00 00 48 85 F6", executible)
             if self.no_reload_addr == None:
-                self.console_output.emit("Failed to find No Reload address")
+                self.log_output.emit("Failed to find No Reload address")
+            else:
+                self.log_output.emit("Found No Reload address: " + hex(self.no_reload_addr))
             self.no_reload = NoReload(self.process, executible, self.proc_handle, self.no_reload_addr)
 
             # Initialize unlimited fuel
-            self.console_output.emit(f"Scanning for Unlimited Fuel address...")
-            self.status_update.emit("Scanning for Unlimited Fuel address...")
+            self.log_output.emit(f"Scanning for Unlimited Fuel address...")
             self.unlimited_fuel_addr = utility.aobScan(self.process, "F3 0F 11 81 D8 10 00 00", executible)
             if self.unlimited_fuel_addr == None:
-                self.console_output.emit("Failed to find Unlimited Fuel address")
+                self.log_output.emit("Failed to find Unlimited Fuel address")
+            else:
+                self.log_output.emit("Found Unlimited Fuel address: " + hex(self.unlimited_fuel_addr))
             self.unlimited_fuel = UnlimitedFuel(self.process, executible, self.proc_handle, self.unlimited_fuel_addr)
 
-            self.success_signal.emit("Addresses resolved. Trainer active.")
+            self.log_output.emit("Finished searching for addresses!")
+            self.success_signal.emit("Trainer active! Have fun :)")
             
             # Main loop
             while self.running:
@@ -73,7 +77,7 @@ class TrainerThread(QThread):
                     # Handle no reload
                     if self.no_reload_enabled and self.no_reload and not self.no_reload.enabled:
                         if self.no_reload.enable():
-                            self.status_update.emit("No Reload Activated!")
+                            self.success_signal.emit("No Reload Activated!")
                         else:
                             self.error_signal.emit("Failed to enable No Reload")
                             self.no_reload_enabled = False
@@ -84,7 +88,7 @@ class TrainerThread(QThread):
                     # Handle unlimited fuel
                     if self.unlimited_fuel_enabled and self.unlimited_fuel and not self.unlimited_fuel.enabled:
                         if self.unlimited_fuel.enable():
-                            self.status_update.emit("Unlimited Fuel Activated!")
+                            self.success_signal.emit("Unlimited Fuel Activated!")
                         else:
                             self.error_signal.emit("Failed to enable Unlimited Fuel")
                             self.unlimited_fuel_enabled = False
@@ -96,7 +100,7 @@ class TrainerThread(QThread):
                     
                 except Exception as e:
                     self.error_signal.emit(f"Runtime error: {str(e)}")
-                    self.console_output.emit(f"Runtime error in trainer loop: {str(e)}")
+                    self.log_output.emit(f"Runtime error in trainer loop: {str(e)}")
                     time.sleep(1)
                     
         except Exception as e:
@@ -257,7 +261,7 @@ class TrainerGUI(QMainWindow):
         self.trainer_thread.status_update.connect(self.update_status)
         self.trainer_thread.error_signal.connect(self.show_error)
         self.trainer_thread.success_signal.connect(self.show_success)
-        self.trainer_thread.console_output.connect(self.append_console)
+        self.trainer_thread.log_output.connect(self.append_console)
         self.trainer_thread.start()
         
         self.start_button.setEnabled(False)
