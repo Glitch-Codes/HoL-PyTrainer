@@ -1,0 +1,69 @@
+{ Game   : High on Life  
+  Version: 
+  Date   : 2023-10-20
+  Author : Ben
+
+  This script does blah blah blah
+}
+
+[ENABLE]
+
+aobscanmodule(INJECT,Oregon-Win64-Shipping.exe,F3 0F 11 81 D8 10 00 00) // should be unique
+alloc(newmem,$1000,INJECT)
+alloc(fuel,4,INJECT)
+
+label(code)
+label(return)
+
+fuel:
+  dd (float)50
+
+newmem:
+  movss xmm0,[fuel]
+  jmp code
+
+code:
+  movss [rcx+000010D8],xmm0
+  jmp return
+
+INJECT:
+  jmp newmem
+  nop 3
+return:
+registersymbol(INJECT)
+
+[DISABLE]
+
+INJECT:
+  db F3 0F 11 81 D8 10 00 00
+
+unregistersymbol(INJECT)
+dealloc(newmem)
+
+{
+// ORIGINAL CODE - INJECTION POINT: Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+5A
+
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+24: 0F 28 F9                 - movaps xmm7,xmm1
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+27: 48 8B D9                 - mov rbx,rcx
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+2A: 80 38 00                 - cmp byte ptr [rax],00
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+2D: 0F 84 F3 01 00 00        - je Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+226
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+33: 80 B9 DC 10 00 00 00     - cmp byte ptr [rcx+000010DC],00
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+3A: 0F 85 E6 01 00 00        - jne Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+226
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+40: 0F 28 C1                 - movaps xmm0,xmm1
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+43: 48 89 BC 24 A8 00 00 00  - mov [rsp+000000A8],rdi
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+4B: F3 0F 58 81 D8 10 00 00  - addss xmm0,[rcx+000010D8]
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+53: 48 8B B9 50 01 00 00     - mov rdi,[rcx+00000150]
+// ---------- INJECTING HERE ----------
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+5A: F3 0F 11 81 D8 10 00 00  - movss [rcx+000010D8],xmm0
+// ---------- DONE INJECTING  ----------
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+62: 48 85 FF                 - test rdi,rdi
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+65: 0F 84 B3 01 00 00        - je Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+21E
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+6B: E8 F0 02 12 00           - call Oregon-Win64-Shipping.AORPlayerCharacter::GetPrivateStaticClass
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+70: 48 8B 57 10              - mov rdx,[rdi+10]
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+74: 4C 8D 40 30              - lea r8,[rax+30]
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+78: 48 63 40 38              - movsxd  rax,dword ptr [rax+38]
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+7C: 3B 42 38                 - cmp eax,[rdx+38]
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+7F: 0F 8F 99 01 00 00        - jg Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+21E
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+85: 48 8B C8                 - mov rcx,rax
+Oregon-Win64-Shipping.UORPlayerMovementComponent::IncrementCurrentFuel+88: 48 8B 42 30              - mov rax,[rdx+30]
+}

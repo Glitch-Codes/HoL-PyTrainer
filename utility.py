@@ -224,7 +224,7 @@ def nopBytes(handle, destination, size):
         hex_string += "90"
     patchBytes(handle, hex_string, destination, size)
 
-def findCodeCave(process, opcode_addr, original_byte_size, jump_back_size = 5):
+def findCodeCave(process, proc_handle, opcode_addr, original_byte_size, jump_back_size = 5):
     # Search for writable memory within 2GB that we can use for our code cave
     # We need space for: original instruction  + jump back 
     code_cave = None
@@ -263,7 +263,7 @@ def findCodeCave(process, opcode_addr, original_byte_size, jump_back_size = 5):
                             # Try to write to it to verify it's writable
                             try:
                                 test_bytes = b'\x00' * 16
-                                patchBytes(process, ''.join(f'{b:02x}' for b in test_bytes), potential_addr, 16)
+                                patchBytes(proc_handle, ''.join(f'{b:02x}' for b in test_bytes), potential_addr, 16)
                                 code_cave = potential_addr
                                 print(f"Found code cave at: {hex(code_cave)}")
                                 print(f"  Jump to offset: {jmp_to_offset}")

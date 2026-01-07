@@ -277,6 +277,7 @@ class TrainerGUI(QMainWindow):
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.set_checkboxes_enabled(False)
+        self.status_label.setStyleSheet("background-color: #8b0000; padding: 10px; border-radius: 5px;")
         self.update_status("Status: Disconnected")
         
         # Reset checkboxes
