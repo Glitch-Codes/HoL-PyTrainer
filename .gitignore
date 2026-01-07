@@ -4,4 +4,4 @@ build.txt
 build/
 .vscode/
 dist/
-RE7-PyTrainer.spec
+*.spec
