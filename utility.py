@@ -151,6 +151,16 @@ def allocMemory(handle, size, preferred_address=None):
     MEM_RESERVE = 0x2000
     PAGE_EXECUTE_READWRITE = 0x40
     
+    # Set return type to c_void_p for proper pointer handling
+    kernel32.VirtualAllocEx.restype = ctypes.c_void_p
+    kernel32.VirtualAllocEx.argtypes = [
+        ctypes.wintypes.HANDLE,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.wintypes.DWORD,
+        ctypes.wintypes.DWORD
+    ]
+    
     addr = kernel32.VirtualAllocEx(
         handle,
         ctypes.c_void_p(preferred_address) if preferred_address else None,
@@ -160,7 +170,11 @@ def allocMemory(handle, size, preferred_address=None):
     )
     
     if addr == 0 or addr is None:
-        return None  # Return None instead of raising exception
+        return None
+    
+    # Ensure we return a positive integer address
+    if addr < 0:
+        addr = addr & 0xFFFFFFFFFFFFFFFF  # Mask to 64-bit unsigned
     
     return addr
 
@@ -280,3 +294,52 @@ def findCodeCave(process, proc_handle, opcode_addr, original_byte_size, jump_bac
     if not code_cave:
         print("Failed to find suitable code cave within 2GB")
         return None
+    
+def allocCodeCave(proc_handle, opcode_addr):
+    # Allocate new executable memory near the injection point
+    # Windows VirtualAllocEx without a preferred address can allocate too far away
+    # Try allocating at multiple addresses within 2GB range
+    print(f"Attempting to allocate executable memory near {hex(opcode_addr)}")
+    
+    # Try addresses before and after the injection point
+    offsets = [
+        -0x10000000,  # -256MB
+        -0x20000000,  # -512MB
+        -0x30000000,  # -768MB
+        0x10000000,   # +256MB  
+        0x20000000,   # +512MB
+        0x30000000,   # +768MB
+        -0x5000000,   # -80MB
+        0x5000000,    # +80MB
+    ]
+    
+    code_cave = None
+    for offset in offsets:
+        try_addr = opcode_addr + offset
+        if try_addr < 0x10000:  # Skip invalid low addresses
+            continue
+        
+        print(f"  Trying to allocate at {hex(try_addr)}...")
+        temp_cave = allocMemory(proc_handle, 0x1000, try_addr)
+        
+        if temp_cave:
+            # Ensure unsigned
+            if temp_cave < 0:
+                temp_cave = temp_cave & 0xFFFFFFFFFFFFFFFF
+            
+            # Calculate jump offset
+            jmp_offset = temp_cave - (opcode_addr + 5)
+            
+            # Check if within 2GB (signed 32-bit range)
+            if -2147483648 <= jmp_offset <= 2147483647:
+                code_cave = temp_cave
+                print(f"  SUCCESS: Allocated at {hex(code_cave)}")
+                print(f"  Distance from injection point: {abs(jmp_offset)} bytes")
+                return code_cave
+            else:
+                print(f"  Too far (offset: {jmp_offset}), trying next...")
+                freeMemory(proc_handle, temp_cave)
+    
+    if not code_cave:
+        print("Failed to allocate memory within 2GB range after trying multiple offsets")
+        return False
