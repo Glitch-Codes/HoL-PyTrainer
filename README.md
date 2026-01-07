@@ -5,3 +5,6 @@ The main goal for this project is to produce something usable with the CheatDeck
 THIS IS A WORK IN PROGRESS. CHEATS MAY OR MAY NOT WORK, THEY MAY ALSO CRASH YOUR GAME.
 
 Running this script: python .\trainer_gui.py
+
+You can compile to an exe yourself using PyInstaller:
+# pyinstaller --onefile --windowed --name "HoL-PyTrainer" trainer_gui.py
